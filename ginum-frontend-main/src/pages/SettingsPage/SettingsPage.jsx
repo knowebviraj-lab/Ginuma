@@ -1,0 +1,1147 @@
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  FaUser,
+  FaCog,
+  FaLock,
+  FaBell,
+  FaGlobe,
+  FaCheck,
+  FaTimes,
+  FaSpinner,
+  FaArrowRight,
+  FaExclamationTriangle,
+  FaSignOutAlt,
+  FaShieldAlt,
+  FaMobileAlt,
+  FaUserShield,
+  FaPlus,
+  FaEdit,
+  FaTrash
+} from "react-icons/fa";
+import { apiUrl } from "../../utils/api";
+import PageHeader from "../../components/common/PageHeader";
+
+const SettingsPage = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("general");
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profile, setProfile] = useState(null);
+  
+  // Status states
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // System Preferences states (stored in localStorage)
+  const [systemPrefs, setSystemPrefs] = useState({
+    currency: "USD",
+    dateFormat: "YYYY-MM-DD",
+    numberFormat: "1,234,567.89"
+  });
+
+  // Notification Preferences states (stored in localStorage)
+  const [notifPrefs, setNotifPrefs] = useState({
+    emailNotif: true,
+    paymentReminders: true,
+    systemAlerts: false,
+    reportUpdates: true
+  });
+
+  // Change Password states
+  const [passwordForm, setPasswordForm] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmPassword: ""
+  });
+
+  // MFA states
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaQrUri, setMfaQrUri] = useState(null);
+  const [mfaStep, setMfaStep] = useState("idle"); // idle | setup | verify | done
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaError, setMfaError] = useState("");
+  const [mfaSuccess, setMfaSuccess] = useState("");
+
+  // Role Management states
+  const [roles, setRoles] = useState([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [editingRole, setEditingRole] = useState(null);
+  const [roleForm, setRoleForm] = useState({
+    roleName: "",
+    description: "",
+    otpRequired: false,
+    permissions: []
+  });
+
+  const AVAILABLE_PERMISSIONS = [
+    { id: "INVOICES", label: "Invoices & Billing" },
+    { id: "CUSTOMERS", label: "Customer Management" },
+    { id: "SUPPLIERS", label: "Supplier Management" },
+    { id: "REPORTS", label: "Financial Reports" },
+    { id: "BANK", label: "Bank & Cash Accounts" },
+    { id: "PROJECTS", label: "Projects & Tracking" },
+    { id: "EMPLOYEES", label: "Employees & Payroll" },
+    { id: "SETTINGS", label: "Company Settings" }
+  ];
+
+  const fetchRoles = async () => {
+    setLoadingRoles(true);
+    try {
+      const companyId = sessionStorage.getItem("companyId") || "1";
+      const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+      const res = await fetch(`${apiUrl}/api/roles?companyId=${companyId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRoles(data);
+      }
+    } catch (err) {
+      console.error("Error fetching roles:", err);
+    } finally {
+      setLoadingRoles(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "roles") {
+      fetchRoles();
+    }
+  }, [activeTab]);
+
+  const handleToggleOtp = async (roleId, currentOtpStatus) => {
+    try {
+      const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+      const res = await fetch(`${apiUrl}/api/roles/${roleId}/toggle-otp`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ otpRequired: !currentOtpStatus })
+      });
+      if (res.ok) {
+        setSuccessMsg("OTP requirement updated successfully!");
+        fetchRoles();
+        setTimeout(() => setSuccessMsg(""), 3000);
+      }
+    } catch (err) {
+      setErrorMsg("Failed to update OTP requirement.");
+    }
+  };
+
+  const handleSaveRole = async (e) => {
+    e.preventDefault();
+    if (!roleForm.roleName) {
+      setErrorMsg("Role Name is required.");
+      return;
+    }
+    const companyId = parseInt(sessionStorage.getItem("companyId") || "1");
+    const payload = {
+      companyId,
+      roleName: roleForm.roleName.toUpperCase().replace(/\s+/g, "_"),
+      description: roleForm.description,
+      otpRequired: roleForm.otpRequired,
+      permissions: roleForm.permissions.join(",")
+    };
+    try {
+      setSaving(true);
+      const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+      const url = editingRole ? `${apiUrl}/api/roles/${editingRole.id}` : `${apiUrl}/api/roles`;
+      const method = editingRole ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setSuccessMsg(editingRole ? "Role updated!" : "Role created!");
+        setShowRoleModal(false);
+        setEditingRole(null);
+        setRoleForm({ roleName: "", description: "", otpRequired: false, permissions: [] });
+        fetchRoles();
+        setTimeout(() => setSuccessMsg(""), 3000);
+      }
+    } catch (err) {
+      setErrorMsg("Failed to save role.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteRole = async (roleId) => {
+    if (!window.confirm("Are you sure you want to delete this role?")) return;
+    try {
+      const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+      const res = await fetch(`${apiUrl}/api/roles/${roleId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setSuccessMsg("Role deleted successfully!");
+        fetchRoles();
+        setTimeout(() => setSuccessMsg(""), 3000);
+      }
+    } catch (err) {
+      setErrorMsg("Failed to delete role.");
+    }
+  };
+
+  // Load preferences from localStorage and profile details from API
+  useEffect(() => {
+    // 1. Fetch system preferences
+    const savedCurrency = localStorage.getItem("pref_currency") || "USD";
+    const savedDate = localStorage.getItem("pref_date_format") || "YYYY-MM-DD";
+    const savedNumber = localStorage.getItem("pref_number_format") || "1,234,567.89";
+    setSystemPrefs({
+      currency: savedCurrency,
+      dateFormat: savedDate,
+      numberFormat: savedNumber
+    });
+
+    // 2. Fetch notifications preferences
+    const savedEmailNotif = localStorage.getItem("pref_notif_email") !== "false";
+    const savedPayments = localStorage.getItem("pref_notif_payments") !== "false";
+    const savedAlerts = localStorage.getItem("pref_notif_alerts") === "true";
+    const savedReports = localStorage.getItem("pref_notif_reports") !== "false";
+    setNotifPrefs({
+      emailNotif: savedEmailNotif,
+      paymentReminders: savedPayments,
+      systemAlerts: savedAlerts,
+      reportUpdates: savedReports
+    });
+
+    // 3. Fetch user profile info
+    const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+    if (token) {
+      fetch(`${apiUrl}/api/users/profile`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed to load user profile");
+          return res.json();
+        })
+        .then((data) => {
+          setProfile(data);
+        })
+        .catch((err) => {
+          console.error("Error loading profile for settings:", err);
+          setErrorMsg("Could not load user profile metadata.");
+        })
+        .finally(() => {
+          setLoadingProfile(false);
+        });
+    } else {
+      setLoadingProfile(false);
+    }
+
+    // Load MFA status from sessionStorage
+    const mfaStatus = sessionStorage.getItem("mfa_enabled");
+    setMfaEnabled(mfaStatus === "true");
+  }, []);
+
+  // Request QR Code from backend
+  const handleSetupMfa = async () => {
+    setMfaLoading(true);
+    setMfaError("");
+    setMfaSuccess("");
+    const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+    try {
+      const res = await fetch(`${apiUrl}/api/auth/mfa/setup`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to get QR code.");
+      const data = await res.json();
+      setMfaQrUri(data.qrCodeUri || data.qrCode || data.uri);
+      setMfaStep("setup");
+    } catch (err) {
+      setMfaError(err.message || "Failed to initialize MFA setup.");
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  // Verify and enable MFA
+  const handleEnableMfa = async () => {
+    if (!mfaCode || mfaCode.length !== 6) {
+      setMfaError("Please enter the 6-digit code from your authenticator app.");
+      return;
+    }
+    setMfaLoading(true);
+    setMfaError("");
+    const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+    try {
+      const res = await fetch(`${apiUrl}/api/auth/mfa/enable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code: mfaCode })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Invalid code. Please try again.");
+      }
+      sessionStorage.setItem("mfa_enabled", "true");
+      setMfaEnabled(true);
+      setMfaStep("done");
+      setMfaQrUri(null);
+      setMfaCode("");
+      setMfaSuccess("Two-Factor Authentication has been enabled successfully!");
+    } catch (err) {
+      setMfaError(err.message || "Failed to verify code.");
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  // Save System Preferences
+  const handleSaveSystemPrefs = (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      localStorage.setItem("pref_currency", systemPrefs.currency);
+      localStorage.setItem("pref_date_format", systemPrefs.dateFormat);
+      localStorage.setItem("pref_number_format", systemPrefs.numberFormat);
+      
+      setSuccessMsg("System preferences updated successfully!");
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err) {
+      setErrorMsg("Failed to save system preferences.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save Notification Preferences
+  const handleSaveNotifPrefs = (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      localStorage.setItem("pref_notif_email", notifPrefs.emailNotif);
+      localStorage.setItem("pref_notif_payments", notifPrefs.paymentReminders);
+      localStorage.setItem("pref_notif_alerts", notifPrefs.systemAlerts);
+      localStorage.setItem("pref_notif_reports", notifPrefs.reportUpdates);
+
+      setSuccessMsg("Notification preferences updated successfully!");
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err) {
+      setErrorMsg("Failed to save notification preferences.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Change Password Submission
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setErrorMsg("All password fields are required.");
+      return;
+    }
+    if (passwordForm.newPassword.length < 7) {
+      setErrorMsg("New password must be at least 7 characters long.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setErrorMsg("New password and confirmation password do not match.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const token = sessionStorage.getItem("auth_token") || sessionStorage.getItem("token");
+      const response = await fetch(`${apiUrl}/api/users/profile/change-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          oldPassword: passwordForm.oldPassword,
+          newPassword: passwordForm.newPassword
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to change password. Please check credentials.");
+      }
+
+      setSuccessMsg("Password updated successfully!");
+      setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" });
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || "Failed to update password.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Format roles
+  const formatRole = (roleStr) => {
+    if (!roleStr) return "";
+    return roleStr
+      .replace("ROLE_", "")
+      .replace(/_/g, " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    navigate("/login");
+  };
+
+  const tabs = [
+    { id: "general", label: "System Preferences", icon: FaGlobe },
+    { id: "roles", label: "Roles & OTP Security", icon: FaUserShield },
+    { id: "security", label: "Security & Passwords", icon: FaLock },
+    { id: "notifications", label: "Notifications", icon: FaBell },
+    { id: "account", label: "Account Info", icon: FaUser },
+    { id: "danger", label: "Danger Zone", icon: FaExclamationTriangle }
+  ];
+
+  return (
+    <div className="p-6 sm:p-8 bg-gray-50 min-h-screen space-y-6 max-w-7xl mx-auto">
+      <PageHeader
+        title="Account Settings"
+        subtitle="Configure system formats, update credentials, and manage your account preference"
+        icon={FaCog}
+      />
+
+      {/* Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        
+        {/* Left Navigation Sidebar */}
+        <div className="lg:col-span-1 bg-white border border-gray-200 rounded-2xl p-4.5 shadow-sm h-fit space-y-1">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setErrorMsg("");
+                  setSuccessMsg("");
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-sm font-bold rounded-xl transition cursor-pointer text-left ${
+                  activeTab === tab.id
+                    ? "bg-blue-50 text-blue-700"
+                    : "text-gray-500 hover:bg-gray-55 hover:text-gray-850"
+                }`}
+              >
+                <Icon className="text-base" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Content Panel */}
+        <div className="lg:col-span-3 space-y-6">
+          
+          {/* Success and Error Alerts */}
+          {errorMsg && (
+            <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-medium flex items-center gap-2">
+              <FaTimes className="text-red-500" />
+              {errorMsg}
+            </div>
+          )}
+          {successMsg && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-755 rounded-xl text-sm font-medium flex items-center gap-2">
+              <FaCheck className="text-emerald-500" />
+              {successMsg}
+            </div>
+          )}
+
+          {/* TAB 1: System Preferences */}
+          {activeTab === "general" && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-gray-850">System Preferences</h3>
+                <p className="text-sm text-gray-405 mt-1">
+                  Adjust default formatting units for financial records, dates, and reports.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveSystemPrefs} className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  
+                  {/* Currency Select */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-600">Default Currency</label>
+                    <select
+                      value={systemPrefs.currency}
+                      onChange={(e) => setSystemPrefs({ ...systemPrefs, currency: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:border-blue-500 focus:outline-none text-base transition"
+                    >
+                      <option value="USD">USD ($) - US Dollar</option>
+                      <option value="EUR">EUR (€) - Euro</option>
+                      <option value="GBP">GBP (£) - British Pound</option>
+                      <option value="LKR">LKR (Rs) - Sri Lankan Rupee</option>
+                      <option value="AUD">AUD ($) - Australian Dollar</option>
+                    </select>
+                  </div>
+
+                  {/* Date Format Select */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-600">Date Format</label>
+                    <select
+                      value={systemPrefs.dateFormat}
+                      onChange={(e) => setSystemPrefs({ ...systemPrefs, dateFormat: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:border-blue-500 focus:outline-none text-base transition"
+                    >
+                      <option value="YYYY-MM-DD">YYYY-MM-DD (e.g. 2026-07-02)</option>
+                      <option value="DD/MM/YYYY">DD/MM/YYYY (e.g. 02/07/2026)</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY (e.g. 07/02/2026)</option>
+                    </select>
+                  </div>
+
+                  {/* Number Format Select */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-gray-600">Number Format</label>
+                    <select
+                      value={systemPrefs.numberFormat}
+                      onChange={(e) => setSystemPrefs({ ...systemPrefs, numberFormat: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl bg-white focus:border-blue-500 focus:outline-none text-base transition"
+                    >
+                      <option value="1,234,567.89">1,234,567.89 (Standard US)</option>
+                      <option value="1.234.567,89">1.234.567,89 (European)</option>
+                    </select>
+                  </div>
+
+                </div>
+
+                <div className="flex justify-end pt-3">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold shadow-sm transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {saving ? <FaSpinner className="animate-spin" /> : <FaCheck />} Save Preferences
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* TAB: User Roles & OTP Security */}
+          {activeTab === "roles" && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-5">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-850 flex items-center gap-2">
+                    <FaUserShield className="text-blue-600" /> User Roles & OTP Security
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Manage role permissions and configure mandatory 2FA / OTP login verification per role.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingRole(null);
+                    setRoleForm({ roleName: "", description: "", otpRequired: false, permissions: [] });
+                    setShowRoleModal(true);
+                  }}
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-sm transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                >
+                  <FaPlus /> Add New Role
+                </button>
+              </div>
+
+              {loadingRoles ? (
+                <div className="flex items-center justify-center py-10">
+                  <FaSpinner className="animate-spin text-2xl text-blue-600" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="gl-table">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50/50 text-xs uppercase font-bold text-gray-500">
+                        <th className="py-3 px-4">Role Name</th>
+                        <th className="py-3 px-4">Description</th>
+                        <th className="py-3 px-4 text-center">OTP Verification</th>
+                        <th className="py-3 px-4">Permissions</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-sm">
+                      {roles.map((r) => (
+                        <tr key={r.id} className="hover:bg-gray-50/50 transition">
+                          <td className="py-3.5 px-4 font-bold text-gray-800">
+                            {r.roleName}
+                          </td>
+                          <td className="py-3.5 px-4 text-gray-600 text-xs max-w-xs">
+                            {r.description || "-"}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <button
+                              onClick={() => handleToggleOtp(r.id, r.otpRequired)}
+                              className={`px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer flex items-center gap-1.5 mx-auto ${
+                                r.otpRequired
+                                  ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                              }`}
+                              title="Click to toggle OTP requirement for this role"
+                            >
+                              <span className={`w-2 h-2 rounded-full ${r.otpRequired ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`}></span>
+                              {r.otpRequired ? "OTP Required" : "OTP Disabled"}
+                            </button>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {r.permissions ? (
+                                r.permissions.split(",").slice(0, 3).map((p, idx) => (
+                                  <span key={idx} className="bg-blue-50 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-md">
+                                    {p.trim()}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 text-xs">Standard</span>
+                              )}
+                              {r.permissions && r.permissions.split(",").length > 3 && (
+                                <span className="text-xs text-gray-400">+{r.permissions.split(",").length - 3} more</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingRole(r);
+                                  setRoleForm({
+                                    roleName: r.roleName,
+                                    description: r.description || "",
+                                    otpRequired: r.otpRequired || false,
+                                    permissions: r.permissions ? r.permissions.split(",") : []
+                                  });
+                                  setShowRoleModal(true);
+                                }}
+                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                title="Edit Role"
+                              >
+                                <FaEdit />
+                              </button>
+                              {r.roleName !== "COMPANY_ADMIN" && (
+                                <button
+                                  onClick={() => handleDeleteRole(r.id)}
+                                  className="p-2 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  title="Delete Role"
+                                >
+                                  <FaTrash />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: Security & Passwords */}
+          {activeTab === "security" && (
+            <div className="space-y-6">
+
+              {/* Change Password Panel */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-855">Change Password</h3>
+                  <p className="text-sm text-gray-405 mt-1">
+                    Ensure your account credentials remain private and secure by updating passwords routinely.
+                  </p>
+                </div>
+
+                <form onSubmit={handleChangePassword} className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-bold text-gray-600 block">Current Password</label>
+                      <input
+                        type="password"
+                        value={passwordForm.oldPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
+                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-base transition"
+                        placeholder="••••••••"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-bold text-gray-600 block">New Password</label>
+                      <input
+                        type="password"
+                        value={passwordForm.newPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-base transition"
+                        placeholder="Min 7 chars"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-bold text-gray-600 block">Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                        className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-base transition"
+                        placeholder="Confirm new password"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-3">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white rounded-xl text-sm font-bold shadow-sm transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      {saving ? <FaSpinner className="animate-spin" /> : <FaLock />} Update Password
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* MFA / 2FA Panel */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-855 flex items-center gap-2">
+                      <FaShieldAlt className="text-blue-600" />
+                      Two-Factor Authentication (2FA)
+                    </h3>
+                    <p className="text-sm text-gray-405 mt-1">
+                      Add an extra layer of security. On login, you'll need a time-based code from your Authenticator App.
+                    </p>
+                  </div>
+                  <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-bold ${
+                    mfaEnabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                  }`}>
+                    {mfaEnabled ? "✓ Enabled" : "Not Enabled"}
+                  </span>
+                </div>
+
+                {/* MFA Success/Error */}
+                {mfaError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-center gap-2">
+                    <FaTimes /> {mfaError}
+                  </div>
+                )}
+                {mfaSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm flex items-center gap-2">
+                    <FaCheck /> {mfaSuccess}
+                  </div>
+                )}
+
+                {/* IDLE - not yet setup */}
+                {mfaStep === "idle" && !mfaEnabled && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 space-y-3">
+                    <p className="text-sm text-blue-800 font-medium">How it works:</p>
+                    <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                      <li>Install <strong>Google Authenticator</strong> or <strong>Authy</strong> on your phone.</li>
+                      <li>Click the button below to get a QR Code.</li>
+                      <li>Scan the QR Code with your app.</li>
+                      <li>Enter the 6-digit code shown in the app to confirm.</li>
+                    </ol>
+                    <button
+                      onClick={handleSetupMfa}
+                      disabled={mfaLoading}
+                      className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold shadow-sm transition cursor-pointer flex items-center gap-2"
+                    >
+                      {mfaLoading ? <FaSpinner className="animate-spin" /> : <FaMobileAlt />}
+                      Set Up 2FA Now
+                    </button>
+                  </div>
+                )}
+
+                {/* SETUP - show QR code */}
+                {mfaStep === "setup" && mfaQrUri && (
+                  <div className="space-y-5">
+                    <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex flex-col items-center gap-4">
+                      <p className="text-sm font-semibold text-gray-700 text-center">
+                        Scan this QR Code with <strong>Google Authenticator</strong> or <strong>Authy</strong>
+                      </p>
+                      <img
+                        src={mfaQrUri}
+                        alt="MFA QR Code"
+                        className="w-48 h-48 border-4 border-white shadow-lg rounded-xl"
+                      />
+                      <p className="text-xs text-gray-400 text-center">After scanning, enter the 6-digit code below to verify and activate.</p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-sm font-bold text-gray-600 block">Enter 6-Digit Code from App</label>
+                      <div className="flex gap-3">
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={mfaCode}
+                          onChange={(e) => { setMfaCode(e.target.value.replace(/\D/g, "")); setMfaError(""); }}
+                          placeholder="e.g. 123456"
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-lg font-mono tracking-[0.4em] text-center transition"
+                        />
+                        <button
+                          onClick={handleEnableMfa}
+                          disabled={mfaLoading || mfaCode.length !== 6}
+                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl text-sm font-bold shadow-sm transition cursor-pointer flex items-center gap-2"
+                        >
+                          {mfaLoading ? <FaSpinner className="animate-spin" /> : <FaCheck />}
+                          Verify & Enable
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => { setMfaStep("idle"); setMfaQrUri(null); setMfaCode(""); setMfaError(""); }}
+                      className="text-xs text-gray-400 hover:text-gray-600 underline cursor-pointer"
+                    >
+                      Cancel Setup
+                    </button>
+                  </div>
+                )}
+
+                {/* Already enabled */}
+                {mfaEnabled && mfaStep !== "setup" && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
+                    <FaShieldAlt className="text-emerald-600 text-2xl shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold text-emerald-800">2FA is Active</p>
+                      <p className="text-xs text-emerald-600 mt-0.5">Your account is protected. Every login requires a code from your Authenticator App.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 3: Notifications Settings */}
+          {activeTab === "notifications" && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-gray-855">Notification Settings</h3>
+                <p className="text-sm text-gray-405 mt-1">
+                  Manage alerts you receive concerning invoice payments, logs, and billing reports.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveNotifPrefs} className="space-y-5">
+                <div className="space-y-4">
+                  
+                  {/* Email Notifications Toggle */}
+                  <div className="flex items-center justify-between p-4.5 bg-gray-50/50 border border-gray-100 rounded-2xl">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">Email Notifications</p>
+                      <p className="text-xs text-gray-400 mt-1">Receive summary reports and logs via email.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs.emailNotif}
+                        onChange={(e) => setNotifPrefs({ ...notifPrefs, emailNotif: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-150 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Payment Reminders Toggle */}
+                  <div className="flex items-center justify-between p-4.5 bg-gray-50/50 border border-gray-100 rounded-2xl">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">Payment Reminders</p>
+                      <p className="text-xs text-gray-400 mt-1">Receive warnings before billing deadlines pass.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs.paymentReminders}
+                        onChange={(e) => setNotifPrefs({ ...notifPrefs, paymentReminders: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-150 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  {/* System Alerts Toggle */}
+                  <div className="flex items-center justify-between p-4.5 bg-gray-50/50 border border-gray-100 rounded-2xl">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">System Alerts</p>
+                      <p className="text-xs text-gray-400 mt-1">Receive notification alerts for login updates and system changes.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs.systemAlerts}
+                        onChange={(e) => setNotifPrefs({ ...notifPrefs, systemAlerts: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-150 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Report Updates Toggle */}
+                  <div className="flex items-center justify-between p-4.5 bg-gray-50/50 border border-gray-100 rounded-2xl">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">Report Updates</p>
+                      <p className="text-xs text-gray-400 mt-1">Receive alerts when Trial Balance or Income Statements are recalculated.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs.reportUpdates}
+                        onChange={(e) => setNotifPrefs({ ...notifPrefs, reportUpdates: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-150 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                </div>
+
+                <div className="flex justify-end pt-3">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold shadow-sm transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {saving ? <FaSpinner className="animate-spin" /> : <FaCheck />} Save Preferences
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* TAB 4: Account Information */}
+          {activeTab === "account" && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-gray-855">Account Information</h3>
+                <p className="text-sm text-gray-405 mt-1">
+                  Metadata concerning corporate definitions and organizational user roles.
+                </p>
+              </div>
+
+              {loadingProfile ? (
+                <div className="flex items-center justify-center py-6">
+                  <FaSpinner className="animate-spin text-xl text-blue-600" />
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                    <div>
+                      <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">Account Name</span>
+                      <p className="text-base font-semibold text-gray-855 mt-1">{profile?.name || "-"}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">Email Address</span>
+                      <p className="text-base font-semibold text-gray-855 mt-1">{profile?.email || "-"}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">User Role</span>
+                      <p className="text-base font-semibold text-gray-855 mt-1">{formatRole(profile?.role) || "-"}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">Account Status</span>
+                      <p className="text-base font-semibold text-emerald-600 mt-1">{profile?.status || "Active"}</p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100 pt-5 flex justify-end">
+                    <Link to="/profile">
+                      <button className="px-5 py-2.5 border border-gray-300 rounded-xl hover:bg-gray-50 text-gray-700 text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer">
+                        Edit Full Profile <FaArrowRight />
+                      </button>
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: Danger Zone */}
+          {activeTab === "danger" && (
+            <div className="bg-rose-50/20 border border-rose-100 rounded-2xl p-6 shadow-sm space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-rose-800 flex items-center gap-2">
+                  <FaExclamationTriangle />
+                  Danger Zone
+                </h3>
+                <p className="text-sm text-rose-600/70 mt-1">
+                  Actions here can affect account authorization. Please proceed with caution.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4.5 bg-white border border-rose-100 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-800">Exit and Terminate Session</h4>
+                    <p className="text-xs text-gray-400 mt-1">Clears authentication tokens and log out of the console.</p>
+                  </div>
+                  <button
+                    onClick={() => setShowLogoutConfirm(true)}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <FaSignOutAlt /> Log Out Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-gray-150 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <FaExclamationTriangle className="text-2xl" />
+              <h3 className="text-lg font-bold text-gray-800">Confirm Logout</h3>
+            </div>
+            <p className="text-sm text-gray-550 leading-relaxed">
+              Are you sure you want to log out of your session? You will need to enter your credentials to log back in.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="px-5 py-2.5 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 text-sm font-bold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleLogout();
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold shadow-sm transition cursor-pointer"
+              >
+                Confirm Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Role Create/Edit Modal */}
+      {showRoleModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full border border-gray-150 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <FaUserShield className="text-blue-600" />
+                {editingRole ? "Edit Role" : "Create New Role"}
+              </h3>
+              <button
+                onClick={() => setShowRoleModal(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRole} className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase font-bold text-gray-600 mb-1">Role Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={roleForm.roleName}
+                  onChange={(e) => setRoleForm({ ...roleForm, roleName: e.target.value })}
+                  placeholder="e.g. ACCOUNTANT, MANAGER, SALES"
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-sm font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase font-bold text-gray-600 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  value={roleForm.description}
+                  onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
+                  placeholder="Role responsibilities and access description"
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                <div>
+                  <p className="text-sm font-bold text-gray-800">Require OTP Verification on Login</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Users with this role will be emailed a 6-digit OTP code when signing in.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={roleForm.otpRequired}
+                    onChange={(e) => setRoleForm({ ...roleForm, otpRequired: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="relative w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase font-bold text-gray-600 mb-2">Module Permissions</label>
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50/50">
+                  {AVAILABLE_PERMISSIONS.map((perm) => {
+                    const isChecked = roleForm.permissions.includes(perm.id);
+                    return (
+                      <label key={perm.id} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 cursor-pointer text-xs font-medium hover:bg-blue-50/30">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setRoleForm({ ...roleForm, permissions: [...roleForm.permissions, perm.id] });
+                            } else {
+                              setRoleForm({ ...roleForm, permissions: roleForm.permissions.filter(p => p !== perm.id) });
+                            }
+                          }}
+                          className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        {perm.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowRoleModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 text-sm font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold shadow-sm transition"
+                >
+                  {saving ? "Saving..." : editingRole ? "Update Role" : "Create Role"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+export default SettingsPage;

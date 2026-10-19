@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* width */
+::-webkit-scrollbar {
+  width: 3px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 5px;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Hide number input arrows */
+::-webkit-inner-spin-button,
+::-webkit-outer-spin-button {
+  -moz-appearance: textfield;
+  /* Firefox */
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   GLOBAL PREMIUM UI SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+@layer base {
+  body {
+    @apply bg-[#f8fafc] text-slate-800 font-sans antialiased;
+  }
+}
+
+@layer components {
+  /* Cards & Panels */
+  .gl-card {
+    @apply bg-white border border-slate-200/60 shadow-sm rounded-[14px] overflow-hidden;
+  }
+  .gl-card-hover {
+    @apply transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 hover:border-slate-300;
+  }
+
+  /* Typography */
+  .gl-heading {
+    @apply text-2xl md:text-[28px] font-bold text-slate-900 tracking-tight leading-[1.2];
+  }
+  .gl-subheading {
+    @apply text-[14px] text-slate-500 font-normal;
+  }
+  .gl-section-title {
+    @apply text-[18px] font-semibold text-slate-800 tracking-tight;
+  }
+  .gl-card-title {
+    @apply text-[15px] font-semibold text-slate-800;
+  }
+
+  /* Inputs & Forms */
+  .gl-label {
+    @apply block text-[13px] font-semibold text-slate-700 mb-1.5;
+  }
+  .gl-input {
+    @apply w-full h-11 bg-slate-50 border border-slate-200 rounded-[10px] px-4 text-[14px] text-slate-800 transition-all duration-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 hover:border-slate-300;
+  }
+  .gl-input-error {
+    @apply border-rose-300 focus:border-rose-500 focus:ring-rose-500/10;
+  }
+
+  /* Buttons */
+  .gl-btn {
+    @apply inline-flex items-center justify-center w-auto h-10 px-4 md:px-5 rounded-[10px] text-[14px] font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .gl-btn-primary {
+    @apply bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 hover:shadow-md border border-transparent;
+  }
+  .gl-btn-secondary {
+    @apply bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 hover:border-slate-300;
+  }
+  .gl-btn-danger {
+    @apply bg-rose-500 text-white shadow-md shadow-rose-500/20 hover:bg-rose-600;
+  }
+
+  /* Tables */
+  .gl-table-container {
+    @apply w-full overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+  .gl-table {
+    @apply w-full text-left text-sm text-slate-600 whitespace-nowrap;
+  }
+  .gl-table th {
+    @apply px-4 py-3 bg-slate-50 font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200;
+  }
+  .gl-table td {
+    @apply px-4 py-3 border-b border-slate-100 transition-colors;
+  }
+  .gl-table tbody tr:hover td {
+    @apply bg-slate-50/80;
+  }
+  .gl-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  /* Badges */
+  .gl-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold;
+  }
+  .gl-badge-success {
+    @apply bg-emerald-100 text-emerald-700;
+  }
+  .gl-badge-error {
+    @apply bg-rose-100 text-rose-700;
+  }
+  .gl-badge-warning {
+    @apply bg-amber-100 text-amber-700;
+  }
+  .gl-badge-info {
+    @apply bg-sky-100 text-sky-700;
+  }
+}
+/* Explicit override for page header actions layout */
+.gl-page-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  width: auto !important;
+  flex: 0 0 auto !important;
+}
+
+.gl-page-actions > * {
+  width: auto !important;
+  flex: 0 0 auto !important;
+}
+
+.gl-page-actions button,
+.gl-page-actions a,
+.gl-page-actions .gl-btn {
+  width: auto !important;
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 40px !important;
+  padding: 0 16px !important;
+}
+
+@media (max-width: 767px) {
+  .gl-page-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+}

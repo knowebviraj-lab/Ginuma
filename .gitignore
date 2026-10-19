@@ -1,0 +1,8 @@
+Requirements/
+Sources/
+ginum-php-main/
+.env
+*.env
+env
+ginum-php-main/app/vendor/
+vendor/

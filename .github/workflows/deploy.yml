@@ -1,0 +1,65 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create .env file from secrets
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > .env
+
+      # ── Build Docker images on the GitHub Actions runner (7GB RAM, free) ──
+      - name: Build Docker images on runner
+        run: docker compose -p ginuma-app build
+
+      # ── Save the built images to compressed tar archives ──
+      - name: Save Docker images to tar
+        run: |
+          docker save ginuma-app-backend:latest | gzip > backend.tar.gz
+          docker save ginuma-app-frontend:latest | gzip > frontend.tar.gz
+
+      # ── Copy the pre-built tars + compose/env files to the VPS ──
+      - name: Copy artifacts to VPS
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          source: "backend.tar.gz,frontend.tar.gz,docker-compose.yml,.env"
+          target: "/root/ginuma-app"
+          strip_components: 0
+          rm: false
+
+      # ── Load images and restart containers — NO build on VPS ──
+      - name: Load images and restart containers on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            cd /root/ginuma-app
+            set -e
+
+            # Load the pre-built images (no compile, no vite build — very low RAM)
+            docker load < backend.tar.gz
+            docker load < frontend.tar.gz
+
+            # Restart containers using the loaded images (no --build flag)
+            docker compose down || true
+            docker compose up -d
+
+            # Clean up tars and dangling images to save disk space
+            rm -f backend.tar.gz frontend.tar.gz
+            docker image prune -f
+
