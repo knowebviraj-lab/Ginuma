@@ -117,13 +117,16 @@ const LandingPage = () => {
             </a>
           </div>
 
-          <div className="lp-nav-actions desktop-only">
+          <div className="lp-nav-actions">
             <Link to="/login" className="lp-login-btn">Login</Link>
+            <button
+              className="lp-mobile-menu-btn mobile-only"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
           </div>
-
-          <button className="lp-mobile-menu-btn mobile-only" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X size={24} color="white" /> : <Menu size={24} color="white" />}
-          </button>
         </nav>
 
         {/* Mobile Menu Dropdown */}
@@ -493,9 +496,9 @@ const LandingPage = () => {
         <div className="lp-cta-blob lp-cta-blob-2"></div>
         <div className="lp-cta-container">
           <div className="lp-cta-content">
-            <h2>Ready to manage your<br />business smarter?</h2>
+            <h2>Ready to manage your<br className="lp-desktop-br" />business smarter?</h2>
             <p>
-              Start using GINUM to simplify accounting, operations,<br />inventory, and financial reporting.
+              Start using GINUM to simplify accounting, operations,<br className="lp-desktop-br" />inventory, and financial reporting.
             </p>
             <div className="lp-cta-buttons">
               <Link to="/login" className="lp-cta-btn-primary">Get Started</Link>
